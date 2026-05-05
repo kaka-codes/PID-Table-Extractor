@@ -1,0 +1,9 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python.defaultInterpreterPath": "D:\\AI Projects\\venv\\Scripts\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "terminal.integrated.env.windows": {
+        "VIRTUAL_ENV": "D:\\AI Projects\\venv",
+        "PATH": "D:\\AI Projects\\venv\\Scripts;${env:PATH}"
+    }
+}

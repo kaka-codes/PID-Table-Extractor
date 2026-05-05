@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Streamlit: P&ID QA",
+            "type": "python",
+            "request": "launch",
+            "python": "D:\\AI Projects\\venv\\Scripts\\python.exe",
+            "module": "streamlit",
+            "args": [
+                "run",
+                "app.py",
+                "--server.port",
+                "8501"
+            ],
+            "cwd": "D:\\AI Projects\\P&ID_RAG_UI",
+            "console": "integratedTerminal"
+        }
+    ]
+}
