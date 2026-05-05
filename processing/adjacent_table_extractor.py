@@ -9,18 +9,20 @@ import pdfplumber
 from google import genai
 from google.genai import types
 
+from google_api_key import google_api_key
 
-API_KEY = "AIzaSyDTdgv_Ap-nhZFJMGpJZeuVyWaAnI3cGzo"
 DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
-if not API_KEY:
-    raise ValueError("Set GEMINI_API_KEY or provide a valid API key before running this script.")
 
-client = genai.Client(
-    api_key=API_KEY,
-    # Ignore broken system proxy variables such as 127.0.0.1:9.
-    http_options=types.HttpOptions(clientArgs={"trust_env": False}),
-)
+def _build_client():
+    if not google_api_key:
+        return None
+
+    return genai.Client(
+        api_key=google_api_key,
+        # Ignore broken system proxy variables such as 127.0.0.1:9.
+        http_options=types.HttpOptions(clientArgs={"trust_env": False}),
+    )
 
 
 def dataframe_to_text(df: pd.DataFrame) -> str:
@@ -45,6 +47,10 @@ def is_high_demand_error(error: Exception) -> bool:
 
 
 def extract_required_data(table_text: str) -> Dict[str, Any]:
+    client = _build_client()
+    if client is None:
+        raise ValueError("Set GOOGLE_API_KEY in Streamlit secrets before running this script.")
+
     table_text = table_text[:12000]
 
     prompt = f"""
@@ -121,7 +127,10 @@ def extract_required_data_from_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
     except Exception as error:
         raw_output = getattr(error, "raw_output", "")
         message = str(error)
-        status = "parse_error" if isinstance(error, json.JSONDecodeError) else "request_error"
+        if "GOOGLE_API_KEY" in message:
+            status = "missing_api_key"
+        else:
+            status = "parse_error" if isinstance(error, json.JSONDecodeError) else "request_error"
         result: Dict[str, Any] = {
             "ok": False,
             "status": status,

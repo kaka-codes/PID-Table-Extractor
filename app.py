@@ -250,7 +250,7 @@ def format_adjacent_table_status(metadata: dict) -> tuple[str, str]:
         "selected_table_not_found": "No equipment table was selected, so the adjacent-table extraction did not run.",
         "next_table_not_found": "No next table was found after the selected equipment table.",
         "empty_table": f"The next table{location_text} was empty after extraction.",
-        "missing_api_key": "GEMINI_API_KEY is not set, so adjacent-table extraction could not run.",
+        "missing_api_key": "GOOGLE_API_KEY is not set in Streamlit secrets, so adjacent-table extraction could not run.",
         "dependency_missing": "The 'google-genai' package is not installed, so adjacent-table extraction could not run.",
         "request_error": f"The Gemini request failed{location_text}.",
         "empty_response": f"Gemini returned an empty response for the next table{location_text}.",
