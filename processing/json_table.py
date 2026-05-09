@@ -204,8 +204,6 @@ def build_collection_transformed_table(documents: list[dict[str, Any]]) -> pd.Da
     dataframe = dataframe.drop(
         columns=[column for column in EXCLUDED_METADATA_COLUMNS if column in dataframe.columns]
     )
-    dataframe = _merge_duplicate_description_rows(dataframe)
-    dataframe = _drop_existing_description_rows(dataframe)
 
     ordered_columns = []
     if "source_file" in dataframe.columns:

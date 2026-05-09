@@ -192,18 +192,11 @@ def table_to_equipment_json(
     if df is None or df.empty or df.shape[1] < 2:
         return result
 
-    # Decide whether column 2 is a nested sub-key column based on the first row
-    # immediately before JSON generation:
-    # - if every first-row cell from column 2 onward has a real value, treat
-    #   them all as item/equipment value columns
-    # - if any first-row cell from column 2 onward is blank, keep column 2 as
-    #   the nested sub-key column
-    first_row_all_value_columns = all(
-        _normalize_value(df.iloc[0, col_idx]).lower() not in EMPTY_MARKERS
-        for col_idx in range(1, df.shape[1])
-    )
-    nested_key_col = None if first_row_all_value_columns else 1
-    value_col_start = 1 if first_row_all_value_columns else 2
+    # Decide whether column 2 is a nested sub-key column based on the header row.
+    # If the second column's first row is blank, it is treated as a nested sub-key
+    # column; otherwise the first value column begins at column 1.
+    nested_key_col = 1 if df.shape[1] > 2 and _normalize_value(df.iloc[0, 1]) in EMPTY_MARKERS else None
+    value_col_start = 2 if nested_key_col is not None else 1
 
     if df.shape[1] <= value_col_start:
         return result
@@ -216,6 +209,7 @@ def table_to_equipment_json(
             valid_cols.append(col_idx)
 
     prev_col = None
+    equipment_items = []
 
     for col_idx in valid_cols:
         eq_data = {}
@@ -249,11 +243,22 @@ def table_to_equipment_json(
             else:
                 eq_data[key1] = value
 
-        if eq_data:
-            result["equipment"].append(eq_data)
-            prev_col = col_idx
+        if not eq_data:
+            continue
 
-    result["equipment"] = _merge_duplicate_equipment_items(result["equipment"])
+        if first_row_val in EMPTY_MARKERS and equipment_items:
+            previous_equipment = equipment_items[-1]
+            for key, value in eq_data.items():
+                if key in previous_equipment:
+                    previous_equipment[key] = _merge_field_values(previous_equipment[key], value)
+                else:
+                    previous_equipment[key] = value
+        else:
+            equipment_items.append(eq_data)
+
+        prev_col = col_idx
+
+    result["equipment"] = equipment_items
     return result
 
 
