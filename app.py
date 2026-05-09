@@ -5,6 +5,9 @@ from io import BytesIO
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 from xml.sax.saxutils import escape
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 import re
 
 import pandas as pd
@@ -101,71 +104,70 @@ def _xml_safe_text(value) -> str:
 
 
 def dataframe_to_excel_bytes(dataframe: pd.DataFrame) -> bytes:
-    sheet_rows = [list(dataframe.columns)]
-    sheet_rows.extend(dataframe.fillna("").values.tolist())
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Equipment List"
 
-    row_xml_parts = []
-    for row_number, row_values in enumerate(sheet_rows, start=1):
-        cell_xml_parts = []
-        for column_index, value in enumerate(row_values):
-            cell_reference = f"{_excel_column_name(column_index)}{row_number}"
-            cell_xml_parts.append(
-                f'<c r="{cell_reference}" t="inlineStr"><is><t>{_xml_safe_text(value)}</t></is></c>'
+    # -----------------------------
+    # Write headers
+    # -----------------------------
+    for col_num, column_name in enumerate(dataframe.columns, start=1):
+        cell = worksheet.cell(row=1, column=col_num, value=str(column_name))
+
+        # Bold + centered headers
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True,
+        )
+
+    # -----------------------------
+    # Write data rows
+    # -----------------------------
+    for row_num, row_data in enumerate(
+        dataframe.fillna("").values.tolist(),
+        start=2,
+    ):
+        for col_num, value in enumerate(row_data, start=1):
+            cell = worksheet.cell(row=row_num, column=col_num, value=str(value))
+
+            # Optional alignment for data
+            cell.alignment = Alignment(
+                vertical="top",
+                wrap_text=True,
             )
-        row_xml_parts.append(f'<row r="{row_number}">{"".join(cell_xml_parts)}</row>')
 
-    sheet_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        f'<sheetData>{"".join(row_xml_parts)}</sheetData>'
-        "</worksheet>"
-    )
+    # -----------------------------
+    # Auto-expand column widths
+    # -----------------------------
+    for column_cells in worksheet.columns:
+        max_length = 0
+        column_letter = get_column_letter(column_cells[0].column)
 
-    workbook_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
-        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-        '<sheets><sheet name="Equipment List" sheetId="1" r:id="rId1"/></sheets>'
-        "</workbook>"
-    )
+        for cell in column_cells:
+            try:
+                cell_value = str(cell.value) if cell.value is not None else ""
+                max_length = max(max_length, len(cell_value))
+            except Exception:
+                pass
 
-    workbook_rels_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-        '<Relationship Id="rId1" '
-        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
-        'Target="worksheets/sheet1.xml"/>'
-        "</Relationships>"
-    )
+        # Add padding so text doesn't touch borders
+        adjusted_width = min(max_length + 4, 80)
 
-    root_rels_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-        '<Relationship Id="rId1" '
-        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
-        'Target="xl/workbook.xml"/>'
-        "</Relationships>"
-    )
+        worksheet.column_dimensions[column_letter].width = adjusted_width
 
-    content_types_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-        '<Default Extension="xml" ContentType="application/xml"/>'
-        '<Override PartName="/xl/workbook.xml" '
-        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-        '<Override PartName="/xl/worksheets/sheet1.xml" '
-        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-        "</Types>"
-    )
+    # -----------------------------
+    # Freeze header row
+    # -----------------------------
+    worksheet.freeze_panes = "A2"
 
+    # -----------------------------
+    # Save workbook to bytes
+    # -----------------------------
     output = BytesIO()
-    with ZipFile(output, mode="w", compression=ZIP_DEFLATED) as workbook_zip:
-        workbook_zip.writestr("[Content_Types].xml", content_types_xml)
-        workbook_zip.writestr("_rels/.rels", root_rels_xml)
-        workbook_zip.writestr("xl/workbook.xml", workbook_xml)
-        workbook_zip.writestr("xl/_rels/workbook.xml.rels", workbook_rels_xml)
-        workbook_zip.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+    workbook.save(output)
+    output.seek(0)
 
     return output.getvalue()
 
