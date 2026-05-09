@@ -27,7 +27,7 @@ st.set_page_config(page_title="P&ID Table Info Fetcher", layout="wide")
 st.title("Get P&ID Table Equipment Details 📋")
 
 st.caption(
-    "Upload one or more P&ID PDFs, then enter a prompt to view the retrieved table context."
+    "Upload one or more P&ID PDFs, and extract the equipments details from the tables."
 )
 
 st.markdown(
