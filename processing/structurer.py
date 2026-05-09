@@ -405,6 +405,10 @@ def build_table_document(pdf_bytes: bytes, filename: str) -> Dict[str, Any]:
             if table_df is None or table_df.empty:
                 continue
 
+            matches_conditions = bool(find_table_keyword_matches(table_df, KEYWORDS))
+            if not matches_conditions:
+                continue
+
             equipment_json = table_to_equipment_json(
                 table_df,
                 source_file=filename,

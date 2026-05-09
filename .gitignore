@@ -1,3 +1,57 @@
-.streamlit/secrets.toml
+# Environment & Python
+venv/
+env/
+.venv/
 __pycache__/
 *.py[cod]
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Streamlit
+.streamlit/secrets.toml
+streamlit.stderr.log
+streamlit.stdout.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary & Test files
+test_tmp*
+_codex_tmp/
+*.tmp
+*.log
+
+# API Keys & Credentials
+
+*.key
+*.pem
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Optional IDE settings (uncomment if needed)
+# .vscode/
+# .idea/
