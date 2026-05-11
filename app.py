@@ -375,13 +375,9 @@ uploaded_pdf_files = st.file_uploader(
 #     "Or upload a folder of P&ID PDFs",
 #     type=["pdf"],
 #     accept_multiple_files="directory",
-uploaded_folder_files = st.file_uploader(
-    "Or upload a folder of P&ID PDFs",
-    type=["pdf"],
-    accept_multiple_files=True,
-    help="Use this when you want to add an entire folder of PDF files at once.",
-    key=f"uploaded_folder_files_{uploader_reset_counter}",
-)
+#     help="Use this when you want to add an entire folder of PDF files at once.",
+#     key=f"uploaded_folder_files_{uploader_reset_counter}",
+# )
 
 uploaded_files = []
 uploaded_files_by_key = {}
