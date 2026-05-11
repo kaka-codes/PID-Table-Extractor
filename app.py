@@ -384,7 +384,7 @@ uploaded_files_by_key = {}
 
 candidate_uploads = []
 candidate_uploads.extend(uploaded_pdf_files or [])
-candidate_uploads.extend(uploaded_folder_files or [])
+# candidate_uploads.extend(uploaded_folder_files or [])
 
 for uploaded_file in candidate_uploads:
     upload_fingerprint = _uploaded_file_fingerprint(uploaded_file)
