@@ -371,20 +371,20 @@ uploaded_pdf_files = st.file_uploader(
     accept_multiple_files=True,
     key=f"uploaded_pdf_files_{uploader_reset_counter}",
 )
-# uploaded_folder_files = st.file_uploader(
-#     "Or upload a folder of P&ID PDFs",
-#     type=["pdf"],
-#     accept_multiple_files="directory",
-#     help="Use this when you want to add an entire folder of PDF files at once.",
-#     key=f"uploaded_folder_files_{uploader_reset_counter}",
-# )
+uploaded_folder_files = st.file_uploader(
+    "Or upload a folder of P&ID PDFs",
+    type=["pdf"],
+    accept_multiple_files="directory",
+    help="Use this when you want to add an entire folder of PDF files at once.",
+    key=f"uploaded_folder_files_{uploader_reset_counter}",
+)
 
 uploaded_files = []
 uploaded_files_by_key = {}
 
 candidate_uploads = []
 candidate_uploads.extend(uploaded_pdf_files or [])
-# candidate_uploads.extend(uploaded_folder_files or [])
+candidate_uploads.extend(uploaded_folder_files or [])
 
 for uploaded_file in candidate_uploads:
     upload_fingerprint = _uploaded_file_fingerprint(uploaded_file)
