@@ -862,13 +862,70 @@ def _find_table_structure(horizontal_lines, vertical_lines, image_shape):
     table_top = best_candidate["top"]
     table_bottom = best_candidate["bottom"]
 
+    table_width = table_right - table_left
+    table_height = table_bottom - table_top
+    
+    table_horizontals = [
+        line
+        for line in horizontal_lines
+        if table_top - 8 <= line["pos"] <= table_bottom + 8
+        and _overlap_length(
+            line["start"],
+            line["end"],
+            table_left,
+            table_right
+        ) >= table_width * 0.2
+    ]
+    
+    table_verticals = [
+        line
+        for line in vertical_lines
+        if table_left - 8 <= line["pos"] <= table_right + 8
+        and _overlap_length(
+            line["start"],
+            line["end"],
+            table_top,
+            table_bottom
+        ) >= table_height * 0.2
+    ]
+    
     return {
         "bbox": {
             "x0": int(table_left),
             "y0": int(table_top),
             "x1": int(table_right),
             "y1": int(table_bottom),
-        }
+        },
+    
+        "horizontal_lines": [
+            {
+                "y": line["pos"],
+                "x0": line["start"],
+                "x1": line["end"]
+            }
+            for line in sorted(
+                table_horizontals,
+                key=lambda item: (
+                    item["pos"],
+                    item["start"]
+                )
+            )
+        ],
+    
+        "vertical_lines": [
+            {
+                "x": line["pos"],
+                "y0": line["start"],
+                "y1": line["end"]
+            }
+            for line in sorted(
+                table_verticals,
+                key=lambda item: (
+                    item["pos"],
+                    item["start"]
+                )
+            )
+        ],
     }
 
 # ============================================
@@ -886,55 +943,186 @@ def _get_ocr_engine():
 
 def _extract_ocr_items(image):
 
-    reader = _get_ocr_engine()
-
-    results = reader.readtext(
+    ocr = _get_ocr_engine()
+    
+    results = ocr.readtext(
         image,
         detail=1,
-        paragraph=False
+        paragraph=False,
+        batch_size=1,
+    )
+    
+    items = []
+    
+    for result in results:
+    
+        try:
+            box, text, confidence = result
+        except Exception:
+            continue
+    
+        if text is None:
+            continue
+    
+        text = str(text).strip()
+    
+        if not text:
+            continue
+    
+        try:
+            confidence_value = float(confidence)
+        except Exception:
+            confidence_value = 0.0
+    
+        xs = [float(point[0]) for point in box]
+        ys = [float(point[1]) for point in box]
+    
+        items.append(
+            {
+                "text": text,
+    
+                "confidence": round(
+                    confidence_value,
+                    4
+                ),
+    
+                "bbox": [
+                    float(min(xs)),
+                    float(min(ys)),
+                    float(max(xs)),
+                    float(max(ys)),
+                ],
+    
+                "center": (
+                    float(sum(xs) / len(xs)),
+                    float(sum(ys) / len(ys)),
+                ),
+            }
+        )
+    
+    return items
+    
+def _is_inside_bbox(point, bbox, pad=2):
+    x, y = point
+    return (
+        bbox["x0"] - pad <= x <= bbox["x1"] + pad
+        and bbox["y0"] - pad <= y <= bbox["y1"] + pad
     )
 
-    items = []
 
-    for result in results:
+def _line_covers_coordinate(line_start, line_end, coordinate, tolerance=6):
+    return line_start - tolerance <= coordinate <= line_end + tolerance
 
-        box, text, confidence = result
+
+def _find_local_bounds(center_x, center_y, horizontals, verticals):
+    left_candidates = [
+        line["x"]
+        for line in verticals
+        if line["x"] <= center_x and _line_covers_coordinate(line["y0"], line["y1"], center_y)
+    ]
+    right_candidates = [
+        line["x"]
+        for line in verticals
+        if line["x"] >= center_x and _line_covers_coordinate(line["y0"], line["y1"], center_y)
+    ]
+    top_candidates = [
+        line["y"]
+        for line in horizontals
+        if line["y"] <= center_y and _line_covers_coordinate(line["x0"], line["x1"], center_x)
+    ]
+    bottom_candidates = [
+        line["y"]
+        for line in horizontals
+        if line["y"] >= center_y and _line_covers_coordinate(line["x0"], line["x1"], center_x)
+    ]
+
+    if not (left_candidates and right_candidates and top_candidates and bottom_candidates):
+        return None
+
+    left = max(left_candidates)
+    right = min(right_candidates)
+    top = max(top_candidates)
+    bottom = min(bottom_candidates)
+
+    if left >= right or top >= bottom:
+        return None
+
+    return (left, top, right, bottom)
+
+
+def _deduplicate_text(parts):
+    seen = set()
+    cleaned = []
+
+    for part in parts:
+        text = " ".join(str(part).split())
 
         if not text:
             continue
 
-        xs = [point[0] for point in box]
-        ys = [point[1] for point in box]
+        token = text.casefold()
 
-        items.append({
-            "text": str(text).strip(),
-            "confidence": float(confidence),
+        if token in seen:
+            continue
 
-            "bbox": [
-                float(min(xs)),
-                float(min(ys)),
-                float(max(xs)),
-                float(max(ys)),
+        seen.add(token)
+        cleaned.append(text)
+
+    return cleaned
+
+
+def _build_semantic_rows(table_items, table_cells, key_split_x):
+    row_groups = defaultdict(list)
+
+    for item in table_items:
+        row_groups[item["row_band"]].append(item)
+
+    structured_rows = []
+
+    for row_band in sorted(row_groups.keys(), key=lambda band: (band[1], band[0])):
+        row_top, row_bottom = row_band
+        row_height = row_bottom - row_top
+        row_center = (row_top + row_bottom) / 2
+        row_cells = sorted(
+            [
+                cell
+                for cell in table_cells
+                if cell["bbox"][1] == row_top and cell["bbox"][3] == row_bottom
             ],
+            key=lambda cell: cell["center"][0],
+        )
 
-            "center": (
-                float(sum(xs) / len(xs)),
-                float(sum(ys) / len(ys)),
-            ),
-        })
+        direct_key_parts = [
+            cell["text"] for cell in row_cells if cell["center"][0] < key_split_x
+        ]
+        value_parts = [
+            cell["text"] for cell in row_cells if cell["center"][0] >= key_split_x
+        ]
 
-    return items
+        inherited_key_parts = [
+            cell["text"]
+            for cell in table_cells
+            if cell["center"][0] < key_split_x
+            and cell["bbox"][1] <= row_center <= cell["bbox"][3]
+            and (cell["bbox"][3] - cell["bbox"][1]) > row_height + 5
+        ]
 
-# ============================================
-# MAIN OCR EXTRACTION
-# ============================================
+        key_parts = _deduplicate_text(inherited_key_parts + direct_key_parts)
+        value_parts = _deduplicate_text(value_parts)
+
+        if not key_parts or not value_parts:
+            continue
+
+        structured_rows.append({" ".join(key_parts): " ".join(value_parts)})
+
+    return structured_rows
+
 
 def _build_ocr_json(
     source_file: str,
-    matched_rows=None,
-    error=None,
-):
-
+    matched_rows: Optional[List[Dict[str, Any]]] = None,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
     payload = {
         "source_file": os.path.basename(source_file),
         "matched_rows": matched_rows or [],
@@ -942,21 +1130,13 @@ def _build_ocr_json(
 
     if error is not None:
         payload["error"] = error
-
     return payload
 
 
-def _ocr_page_result(pdf_bytes, filename, page_index):
-
-    document = fitz.open(
-        stream=pdf_bytes,
-        filetype="pdf"
-    )
-
+def _ocr_page_result(pdf_bytes: bytes, filename: str, page_index: int) -> Dict[str, Any]:
+    document = fitz.open(stream=pdf_bytes, filetype="pdf")
     page = document[page_index]
-
     rect = page.rect
-
     clip_rect = fitz.Rect(
         0,
         0,
@@ -964,30 +1144,70 @@ def _ocr_page_result(pdf_bytes, filename, page_index):
         min(rect.height, DEFAULT_CLIP_HEIGHT),
     )
 
-    image = _render_pdf_region(
-        pdf_bytes,
-        page_index,
-        clip_rect,
-        DEFAULT_RENDER_SCALE
-    )
-
+    image = _render_pdf_region(pdf_bytes, page_index, clip_rect, DEFAULT_RENDER_SCALE)
     horizontal_lines, vertical_lines = _detect_table_lines(image)
-
-    table_structure = _find_table_structure(
-        horizontal_lines,
-        vertical_lines,
-        image.shape
-    )
-
+    table_structure = _find_table_structure(horizontal_lines, vertical_lines, image.shape)
     ocr_items = _extract_ocr_items(image)
 
-    matched_rows = []
+    table_bbox = table_structure["bbox"]
+    table_horizontals = table_structure["horizontal_lines"]
+    table_verticals = table_structure["vertical_lines"]
+
+    table_items = []
+    grouped_cells = defaultdict(list)
 
     for item in ocr_items:
-        matched_rows.append({
-            "text": item["text"],
-            "confidence": round(item["confidence"], 4),
-        })
+        if not _is_inside_bbox(item["center"], table_bbox):
+            continue
+
+        local_bounds = _find_local_bounds(
+            item["center"][0],
+            item["center"][1],
+            table_horizontals,
+            table_verticals,
+        )
+
+        if not local_bounds:
+            continue
+
+        left, top, right, bottom = local_bounds
+
+        item["cell_bbox"] = [left, top, right, bottom]
+        item["row_band"] = (top, bottom)
+        table_items.append(item)
+        grouped_cells[(left, top, right, bottom)].append(item)
+
+    table_cells = []
+
+    for bbox, items in sorted(grouped_cells.items(), key=lambda entry: (entry[0][1], entry[0][0])):
+        ordered_items = sorted(items, key=lambda item: item["center"][0])
+        text_parts = [item["text"] for item in ordered_items]
+
+        table_cells.append(
+            {
+                "bbox": list(bbox),
+                "center": [
+                    round((bbox[0] + bbox[2]) / 2, 1),
+                    round((bbox[1] + bbox[3]) / 2, 1),
+                ],
+                "text": " ".join(_deduplicate_text(text_parts)),
+            }
+        )
+
+    major_verticals = sorted(
+        [
+            line["x"]
+            for line in table_verticals
+            if (line["y1"] - line["y0"]) >= (table_bbox["y1"] - table_bbox["y0"]) * 0.8
+        ]
+    )
+
+    if len(major_verticals) >= 3:
+        key_split_x = major_verticals[1]
+    else:
+        key_split_x = table_bbox["x0"] + int((table_bbox["x1"] - table_bbox["x0"]) * 0.35)
+
+    matched_rows = _build_semantic_rows(table_items, table_cells, key_split_x)
 
     return {
         "page_number": page_index + 1,
@@ -998,29 +1218,16 @@ def _ocr_page_result(pdf_bytes, filename, page_index):
     }
 
 
-def extract_ocr_document(pdf_bytes, filename):
-
-    document = fitz.open(
-        stream=pdf_bytes,
-        filetype="pdf"
-    )
-
+def extract_ocr_document(pdf_bytes: bytes, filename: str) -> Dict[str, Any]:
+    document = fitz.open(stream=pdf_bytes, filetype="pdf")
     ocr_results = []
 
     for page_index in range(len(document)):
-
         try:
-            page_result = _ocr_page_result(
-                pdf_bytes,
-                filename,
-                page_index
-            )
-
+            page_result = _ocr_page_result(pdf_bytes, filename, page_index)
         except Exception as exc:
-
             page_result = {
                 "page_number": page_index + 1,
-
                 "ocr_json": _build_ocr_json(
                     source_file=filename,
                     matched_rows=[],
@@ -1031,56 +1238,46 @@ def extract_ocr_document(pdf_bytes, filename):
         ocr_results.append(page_result)
 
     chunks = []
-
     chunk_number = 1
 
     for page_result in ocr_results:
-
-        matched_rows = page_result["ocr_json"].get(
-            "matched_rows",
-            []
-        )
-
+        matched_rows = page_result["ocr_json"].get("matched_rows", [])
         if not matched_rows:
             continue
 
         chunk_lines = []
-
         for row in matched_rows:
-
-            text = row.get("text", "").strip()
-
-            if text:
-                chunk_lines.append(text)
+            for key, value in row.items():
+                chunk_lines.append(f"{key}: {value}")
 
         if not chunk_lines:
             continue
 
-        chunks.append({
-            "source_file": filename,
-            "page_number": page_result["page_number"],
-            "table_number": 1,
-            "split_number": None,
-            "equipment_number": None,
-            "context_type": "ocr_rows",
-            "text": "\n".join(chunk_lines),
-            "chunk_number": chunk_number,
-        })
-
+        chunks.append(
+            {
+                "source_file": filename,
+                "page_number": page_result["page_number"],
+                "table_number": 1,
+                "split_number": None,
+                "equipment_number": None,
+                "context_type": "ocr_rows",
+                "text": "\n".join(chunk_lines),
+                "chunk_number": chunk_number,
+            }
+        )
         chunk_number += 1
 
     return {
         "metadata": {
             "source_file": filename,
             "raw_table_count": len(ocr_results),
-            "matched_table_count": len(ocr_results),
+            "matched_table_count": len([result for result in ocr_results if result["ocr_json"].get("matched_rows")]),
             "candidate_table_count": len(ocr_results),
             "selected_table_count": 0,
             "chunk_count": len(chunks),
             "equipment_count": 0,
             "extraction_mode": "ocr",
         },
-
         "extracted_tables": [],
         "tables": [],
         "chunks": chunks,
